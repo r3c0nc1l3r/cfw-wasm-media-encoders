@@ -1,6 +1,6 @@
 import { Mp3Params } from "./wasm/lame/params";
 import { OggParams } from "./wasm/vorbis/params";
-import EmscriptenModule from "./module";
+import createModuleFromInstance from "./module";
 import getVersion from "./version";
 
 interface BaseEncoderParams {
@@ -81,7 +81,9 @@ class WasmMediaEncoder<MimeType extends SupportedMimeTypes> {
 
   private constructor(
     public readonly mimeType: MimeType,
-    private readonly module: Unpromisify<ReturnType<typeof EmscriptenModule>>,
+    private readonly module: Unpromisify<
+      ReturnType<typeof createModuleFromInstance>
+    >,
     private readonly parseParams: (
       params: EncoderParams<MimeType>
     ) => Int32Array,
@@ -107,12 +109,16 @@ class WasmMediaEncoder<MimeType extends SupportedMimeTypes> {
     }
   }
 
-  public static async create<T extends SupportedMimeTypes>(
+  /**
+   * Create a new encoder from a pre-compiled WebAssembly module
+   */
+  public static create<T extends SupportedMimeTypes>(
     mimeType: T,
-    wasm: string | ArrayBuffer | Uint8Array | WebAssembly.Module,
+    instance: WebAssembly.Instance,
+    module: WebAssembly.Module,
     moduleCallback?: EncoderModuleCallback
-  ): Promise<WasmMediaEncoder<T>> {
-    const em_module = await EmscriptenModule(wasm);
+  ): WasmMediaEncoder<T> {
+    const em_module = createModuleFromInstance(instance, module);
     return new WasmMediaEncoder(
       mimeType,
       em_module,

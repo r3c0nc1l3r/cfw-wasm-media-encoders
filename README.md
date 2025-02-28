@@ -269,3 +269,90 @@ make test
 ## License
 
 This project is licensed under the terms of the **MIT** license.
+
+## Usage with Cloudflare Workers
+
+This library has been updated to be compatible with Cloudflare Workers, which have restrictions on dynamic WebAssembly instantiation. The following methods are not allowed in Cloudflare Workers:
+
+- `WebAssembly.compile`
+- `WebAssembly.compileStreaming`
+- `WebAssembly.instantiate` with a buffer parameter
+- `WebAssembly.instantiateStreaming`
+
+Instead, you need to pre-compile your WebAssembly modules and initialize them before using the encoders. Here's how to use this library with Cloudflare Workers:
+
+### 1. Pre-compile WebAssembly modules
+
+You need to pre-compile the WebAssembly modules outside of the Cloudflare Workers runtime. This can be done during your build process or by using the Cloudflare Workers Wrangler tool.
+
+```js
+// Example of pre-compiling WebAssembly modules in your build process
+import { mp3WasmUrl, oggWasmUrl } from "wasm-media-encoders";
+
+// Fetch and compile the WebAssembly modules
+const mp3Response = await fetch(mp3WasmUrl);
+const mp3Buffer = await mp3Response.arrayBuffer();
+const mp3Module = await WebAssembly.compile(mp3Buffer);
+
+const oggResponse = await fetch(oggWasmUrl);
+const oggBuffer = await oggResponse.arrayBuffer();
+const oggModule = await WebAssembly.compile(oggBuffer);
+
+// Store the compiled modules for use in your Cloudflare Worker
+// You can use Wrangler to bundle these modules with your worker
+```
+
+### 2. Initialize the modules in your Cloudflare Worker
+
+```js
+import {
+  initializeWasmModules,
+  createMp3Encoder,
+  createOggEncoder,
+} from "wasm-media-encoders";
+
+// In your Cloudflare Worker
+export default {
+  async fetch(request, env, ctx) {
+    // Initialize the WebAssembly modules with your pre-compiled modules
+    // These modules should be available in your worker's environment
+    initializeWasmModules(env.MP3_MODULE, env.OGG_MODULE);
+
+    // Now you can create encoders
+    const mp3Encoder = createMp3Encoder();
+    mp3Encoder.configure({
+      channels: 2,
+      sampleRate: 44100,
+      bitrate: 128,
+      // other MP3 parameters...
+    });
+
+    // Use the encoder as before
+    // ...
+
+    return new Response("Audio processing complete");
+  },
+};
+```
+
+### 3. Configure your wrangler.toml
+
+You'll need to configure Wrangler to include your pre-compiled WebAssembly modules:
+
+```toml
+name = "your-worker"
+main = "src/index.js"
+
+[build]
+command = "your build command that pre-compiles the WebAssembly modules"
+
+[[wasm_modules]]
+name = "MP3_MODULE"
+path = "path/to/compiled/mp3.wasm"
+
+[[wasm_modules]]
+name = "OGG_MODULE"
+path = "path/to/compiled/ogg.wasm"
+```
+
+This approach ensures that your code complies with Cloudflare Workers' restrictions on dynamic WebAssembly instantiation.

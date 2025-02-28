@@ -30,50 +30,16 @@ interface IWasmEncoderPublic extends IWasmModulePublicExports {
 
 interface IWasmEncoderPrivate extends IWasmModuleExports, IWasmEncoderPublic {}
 
-function parseDataUrl(url: string) {
-  const parts = url.split(",");
-  if (
-    parts.length !== 2 ||
-    /^data:application\/(octet-stream|wasm);base64$/.test(parts[0]) === false
-  ) {
-    throw new Error("Passed non-data URI");
-  }
-
-  return Buffer.from(parts[1], "base64");
-}
-
-export default async function (
-  wasm: BufferSource | WebAssembly.Module | string
-): Promise<IWasmEncoderPublic> {
-  const imports = {
-    wasi_snapshot_preview1: {
-      proc_exit: (code: number) => {
-        throw new Error(`fatal error exit(${code})`);
-      },
-    },
-    env: { emscripten_notify_memory_growth: () => {} },
-  };
-
-  if (typeof wasm === "string" && !WebAssembly.instantiateStreaming) {
-    wasm =
-      typeof fetch === "undefined"
-        ? await parseDataUrl(wasm)
-        : await (await fetch(wasm)).arrayBuffer();
-  }
-
-  const output = (await (typeof wasm === "string"
-    ? WebAssembly.instantiateStreaming(fetch(wasm), imports)
-    : WebAssembly.instantiate(wasm, imports))) as XOR<
-    {
-      instance: WebAssembly.Instance;
-      module: WebAssembly.Module;
-    },
-    WebAssembly.Instance
-  >;
+// Function to create an encoder from a pre-compiled WebAssembly module
+export default function createModuleFromInstance(
+  instance: WebAssembly.Instance,
+  module: WebAssembly.Module
+): IWasmEncoderPublic {
+  const exports = instance.exports as IWasmModuleExports;
 
   const ret: IWasmEncoderPrivate = {
-    ...((output.instance || output).exports as IWasmModuleExports),
-    module: output.module || wasm,
+    ...exports,
+    module,
     getInt32Array(ptr, length) {
       return new Int32Array(this.memory.buffer, ptr, length);
     },
